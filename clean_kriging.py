@@ -380,6 +380,8 @@ class MLEKrigor:
             
     
     def _reassign_small_clusters(self,threshold=10):
+        """Merge clusters with less than given number of points into others
+        """
         for i,c in enumerate(self.allCats):
             ms = self.cluster_results[i]
             catChosen = self.chosen_points[self.cat==c]
@@ -404,6 +406,24 @@ class MLEKrigor:
                 self.allPars[i][k,:] = self.allPars[i][nearest_neighbor,:]
             
     def predict(self,lonPred,latPred,catPred,lambda_w=100.0,get_covar=True):
+        """Carry out actual kriging interpolation
+        
+        Parameters
+        ----------
+        lonPred: np.ndarray
+            Longitudes of locations where to interpolate
+        latPred: np.ndarray
+            Latitudes of locations where to interpolate
+        catPred : np.ndarray(dtype=int)
+            Categories values of locations where to interpolate. Needs to be 
+            an integer value. Category values which are in catPred but not in 
+            self.cat are assigned an interpolated value of np.nan.
+        lambda_w: float
+            Controls the interpolation of covariance parameters.
+        get_covar: bool
+            If true the complete covariance matrix beteween all points (lonPred,
+            latPred) is returned. This can take extreme amounts of memory!
+        """
         predPars = np.zeros((lonPred.shape[0],3))
         predicted = np.zeros(lonPred.shape)
         if get_covar:
@@ -440,8 +460,27 @@ class MLEKrigor:
         return predicted,predSigma,predPars
 
     def jacknife(self,maxAbsDev=5.0,maxErrRatio=2.0,lambda_w=100.0,):
-        """
-        Use only points for prediction which are in the same cluster
+        """Carry out outlier detection and duplicate selection using jacknifing
+        
+        Every point is predicted (interpolated) using all other points and
+        that value is compared with the true value of that point. If 
+            |val-predicted| > maxErrRatio * sigma AND
+            |val-predicted| > maxAbsDev
+        the point is flagged as an outlier.
+        To increase speed, only points in the same cluster are used 
+        for prediction.
+        Usually, two rounds of outlier removal are carried out (
+            Stolk et al. 2014)
+        
+        Returns
+        -------
+        returnor: tuple
+            Contains the original data (self.X), the predicted values and
+            estimated variance at each point. This is mainly a convenience
+            return for making some plots from the paper.
+        new_chosen_points: np.ndarray(dtype=bool)
+            In this array outliers are flagged as False and useable points as
+            True. Note, that self.chosen_points is NOT set automatically.
         """
         jpred = np.zeros((self.X.shape[0]))
         krigvar = np.zeros((self.X.shape[0]))
@@ -497,6 +536,8 @@ class MLEKrigor:
             
 
 def solve_kriging_system(X,Y,cluster_x,cluster_y,allPars,lambda_w=100.0,get_covar=True):
+    """Helper function to solve linear system of equations related to kriging
+    """
     combX = np.hstack((Y[:,0],X[:,0]))
     combY = np.hstack((Y[:,1],X[:,1]))
     combPars = interp_pars(combX,combY,cluster_x,cluster_y,allPars,lambda_w=lambda_w)
