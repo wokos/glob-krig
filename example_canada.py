@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import clean_kriging as clean_kriging
 from func_dump import get_pairwise_geo_distance
 import sklearn.cluster as cluster
-
+import datetime
 
 
 def test_cluster_size(point_data,max_size,do_plot=False,chosen_range=None,
@@ -119,55 +119,59 @@ plt.colorbar()
 plt.show()
 
 
-# Test effect of number of clusters on cluster radius
-test_cluster_size(np.vstack((lon,lat)).T,20,True)
-plt.show()
-# Based on an intended clustering size of a bout 1000 km, I choose 8 clusters
 
 # Define mean and standard deviation of covariance parameters. This is a bit
 # convoluted ... but what it basically means is that the 
 # Nugget  = 1 km +/- 3 km
 # Sill = 6.3 km +/- 6.3 km
 # Range = 10 deg +/- 10 deg
-# Than this gets converted into the alpha and beta paramter of a gamma-distribution
+# Than this gets converted into the alpha and beta paramter of an inverse 
+# gamma-distribution
 
 moments = np.zeros((3,2,1))
 moments[:,:,0] = np.array(((1.0,3.0**2),(40.0,40.0**2),(10.0,10.0**2)))
 beta = moments[:,0,:]**3/moments[:,1,:]+moments[:,0,:]
 alpha = 2 + moments[:,0,:]**2 / moments[:,1,:]
 
+# Test effect of number of clusters on cluster radius
+test_cluster_size(np.vstack((lon,lat)).T,20,True)
+plt.show()
+# Based on this graph, I decide on 10 clusters (1000 km radius)
+
+krigDict = {"hyperPars":np.dstack((alpha,beta)),"minNugget":0.5,"minSill":1.0,
+    "maxRange":None,"lambda_w":1000.0,"maxAbsDev":4.0,"maxErrRatio":2.0}
+clusterOptions=[{'linkage':'complete','affinity':'precomputed','n_clusters':10}]
+krigDict["clusterOptions"] = clusterOptions
+
+
 # Carry out the clustering and set up the kriging object
 
 cat = np.ones((point_data.shape[0]),dtype=int)
 
 krigor = clean_kriging.MLEKrigor(point_data[:,0],point_data[:,1],point_data[:,2],cat)
-clusterOptions=[{'linkage':'complete','affinity':'precomputed','n_clusters':8}]
 
 krigor._cluster_points(cluster.AgglomerativeClustering,options=clusterOptions,use_pd=True)
 krigor._detect_dupes()
-krigor._fit_all_clusters(minNugget=0.5,minSill=1.0,
-    hyperpars=np.dstack((alpha,beta)),prior="inv_gamma",maxRange=None)
-
-    
-krigDict = {"threshold":1,"lambda_w":1.0,"minSill":1.0,
-            "minNugget":0.5,
-           "maxAbsError":4.0,"maxRelError":2.0,"badPoints":None,
-           "hyperPars":np.dstack((alpha,beta)),"prior":"inv_gamma",
-           "blocks":10}
-
+krigor._fit_all_clusters(minNugget=krigDict["minNugget"],minSill=krigDict["minSill"],
+    hyperpars=np.dstack((alpha,beta)),prior="inv_gamma",maxRange=krigDict["maxRange"])
 
 # Outlier detection
 
-sigma1,new_chosen = krigor.jacknife(4.0,2.0,100.0)
+sigma1,new_chosen = krigor.jacknife(krigDict["maxAbsDev"],krigDict["maxErrRatio"],krigDict["lambda_w"])
 krigor.chosen_points = new_chosen.copy()
-krigor._fit_all_clusters(minNugget=0.5,minSill=1.0,
-        hyperpars=krigDict["hyperPars"],prior="inv_gamma",maxRange=None)  
-        
-sigma2,new_new_chosen = krigor.jacknife(4.0,2.0,100.0)
-krigor.chosen_points = new_new_chosen.copy()
-krigor._fit_all_clusters(minNugget=0.5,minSill=1.0,
-        hyperpars=krigDict["hyperPars"],prior="inv_gamma",maxRange=None)  
+krigor._fit_all_clusters(minNugget=krigDict["minNugget"],minSill=krigDict["minSill"],
+    hyperpars=np.dstack((alpha,beta)),prior="inv_gamma",maxRange=krigDict["maxRange"]) 
 
+print 'Outlier detection round 1: %d of %d points selected' % (new_chosen.sum(),len(new_chosen))
+print 'Outlier detection round 1: Cross-validation error %.2f km' % np.sqrt(((sigma1[0][:,2]-sigma1[1])**2).mean())
+    
+sigma2,new_new_chosen =krigor.jacknife(krigDict["maxAbsDev"],krigDict["maxErrRatio"],krigDict["lambda_w"])
+krigor.chosen_points = new_new_chosen.copy()
+krigor._fit_all_clusters(minNugget=krigDict["minNugget"],minSill=krigDict["minSill"],
+    hyperpars=np.dstack((alpha,beta)),prior="inv_gamma",maxRange=krigDict["maxRange"])
+
+print 'Outlier detection round 2: %d of %d points selected' % (new_new_chosen.sum(),len(new_chosen))
+print 'Outlier detection round 2: Cross-validation error %.2f km' % np.sqrt(((sigma2[0][:,2]-sigma2[1])**2).mean())
 
 
 # Prepare the interpolation region
@@ -179,15 +183,40 @@ cat_grid = np.ones(lonGrid.shape,dtype=int)
 
 # Carry out the interpolation
 pred,krigvar,predPars = krigor.predict(lonGrid.flatten(),latGrid.flatten(),cat_grid.flatten(),
-                                       lambda_w=1000.0,get_covar=False)
+                                       lambda_w=krigDict["lambda_w"],get_covar=False)
 
 pred = pred.reshape(lonGrid.shape)
 krigvar = krigvar.reshape(lonGrid.shape)
 
 # Plot the interpolation result and associated uncertainty
-plt.contourf(lonPred,latPred,pred)
+plt.contourf(lon,lat,pred)
 plt.colorbar()
 
 plt.figure()
-plt.contourf(lonPred,latPred,np.sqrt(krigvar))
+plt.contourf(lon,lat,np.sqrt(krigvar))
 plt.colorbar()
+
+header=u"""Depth to Moho boundary obtained by global non-stationary kriging of data from Geological survey of Canada
+===
+Author
+===
+Wolfgang Szwillus, Kiel University
+wolfgang.szwillus@ifg.uni-kiel.de
+===
+Description
+===
+Column 1: Longitude
+Column 2: Latitude
+Column 3: Depth to Moho (km), measured from 0
+Column 4: Estimated uncertainty of Moho depth (km)
+=== 
+Method
+===
+See Szwillus et al. (2019):  https://doi.org/10.1029/2018JB016593
+===
+Parameters
+===
+"""
+now = datetime.datetime.now()
+temp = np.vstack((lonGrid.flat,latGrid.flat,pred.flat,np.sqrt(krigvar).flat)).T
+np.savetxt("Canada-moho-interp-%s.txt"%now.strftime("%y-%B-%d-%H-%M"),temp,header=unicode(header),fmt='%.2f')

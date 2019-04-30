@@ -608,9 +608,6 @@ def jacknife_kriging(X,chosenPoints,cluster_x,cluster_y,allPars,lambda_w=100.0):
     # Non-chosen points are simply predicted using chosen points
     if np.sum(~chosenPoints) > 0:
         temp = solve_kriging_system(X[chosenPoints,:],X[~chosenPoints,:],cluster_x,cluster_y,allPars,lambda_w=lambda_w,get_covar=False)
-        print 'chosen',np.sum(chosenPoints),np.sum(~chosenPoints),temp[0].shape
-        print 'not chosen',np.sum(chosenPoints),np.sum(~chosenPoints),temp[0].shape,temp[1].shape
-
         predicted[~chosenPoints] = temp[0]
         krigvar[~chosenPoints] = temp[1]
     return predicted,krigvar
