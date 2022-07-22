@@ -80,8 +80,7 @@ def meta_kriging(pointData,predictionData,cluster_settings,optimization_settings
     hyperPars = optimization_settings.get("hyperPars",None)
     prior = optimization_settings.get("prior",None)    
 
-    maxAbsError = jackknife_settings.get("maxAbsError",None)
-    maxRelError = jackknife_settings.get("maxRelError",2.0)
+    
     
     pred = np.ones(predictionData[0].shape) * np.nan
     krigvar = np.ones(predictionData[0].shape) * np.nan
@@ -94,6 +93,9 @@ def meta_kriging(pointData,predictionData,cluster_settings,optimization_settings
         hyperpars=hyperPars,prior=prior,maxRange=maxRange)
     krigor._reassign_small_clusters(threshold=threshold)
     if not jackknife_settings is None:
+        maxAbsError = jackknife_settings.get("maxAbsError",None)
+        maxRelError = jackknife_settings.get("maxRelError",2.0)
+
         sigma1,new_chosen = krigor.jacknife(maxAbsError,maxRelError,lambda_w)
         new_chosen[badPoints] = 0
         krigor.chosen_points = new_chosen.copy()
