@@ -51,3 +51,30 @@ def get_all_geo_distance(lon,lat,lon0,lat0):
     pd[pd>1] = 1
     pd = 180.0/np.pi*np.arccos(pd)
     return pd
+
+def C_sph_nugget(d,covarParams):
+    """Evaluate spherical covariance function
+    """
+    C = np.zeros(d.shape)
+    if covarParams[2] == 0.0:
+        np.fill_diagonal(C,covarParams[0] + covarParams[1])
+    else:
+        C[d==0] = covarParams[0] + covarParams[1]
+        C[(d>0)&(d<covarParams[2])] =  covarParams[1] * (1 - 1.5*d[(d>0)&(d<covarParams[2])]/covarParams[2] + 0.5 * d[(d>0)&(d<covarParams[2])]**3  / covarParams[2]**3)
+        C[(d>0)&(d>=covarParams[2])] =  0.0
+    return C
+
+def get_semivariogram(pd,val,h,binWidth):
+    N = pd.shape[0]
+    valid = np.where((pd >= h-0.5*binWidth) & (pd <= h+0.5*binWidth))
+    dz = (val[valid[0]] - val[valid[1]])**2
+    return np.sum(dz) / (2.0 * len(dz)),len(dz)/2
+
+def get_semivariogram_lags(pd,val,hmax,binWidth):
+    nbins = int(hmax/binWidth) + 1
+    hs = np.arange(0,nbins,1) * binWidth + 0.5 * binWidth
+    gamma = np.zeros((nbins))
+    bincount = np.zeros((nbins))
+    for i in range(nbins):
+        gamma[i],bincount[i] = get_semivariogram(pd,val,hs[i],binWidth)
+    return hs,gamma,bincount
