@@ -129,7 +129,7 @@ def meta_kriging(pointData,predictionData,cluster_settings,optimization_settings
     if more_returns and not jackknife_settings is None:
         return pred,krigvar,krigor,sigma1,sigma2
     else:
-        return pred,krigvar
+        return pred,krigvar,krigor
 
 
 def log_inv_gamma(vals,hyperpars):
