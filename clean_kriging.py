@@ -4,7 +4,7 @@ from scipy.optimize import minimize
 from collections import defaultdict
 import scipy.sparse.linalg as splinalg
 from scipy.sparse import csc_matrix,lil_matrix
-from func_dump import *
+from .func_dump import *
 
 def meta_kriging(pointData,predictionData,cluster_settings,optimization_settings,
                 jackknife_settings=None,more_returns=False,get_covar=False,blocks=1,verbose=False):
